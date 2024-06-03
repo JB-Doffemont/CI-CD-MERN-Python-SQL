@@ -1,0 +1,88 @@
+name: Build, Test and Deploy React Application
+
+# Controls when the action will run.
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  build_test:
+    permissions: # Job-level permissions configuration starts here
+      contents: write # 'write' access to repository contents
+      pull-requests: write # 'write' access to pull requests
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: npm ci and test
+        run: |
+          cd my-app
+          npm install
+          npm ci
+          npm test
+          
+      - name: Set up Docker Environment - mongo / nodejs
+        run: docker-compose -f docker-compose-nodejs-mongodb.yml up -d
+      - name: Fix permissions
+        run: |
+          sudo chown -R $(whoami) .
+          sudo chmod -R u+rw .
+      - name: Install Dependencies
+        run: |
+          cd node-server
+          npm install
+      - name: Run server tests nodejs
+        run: |
+          cd node-server
+          npm test
+      - name: Run e2e tests with cypress
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: my-app
+      - name: Shutdown Docker Environment - mongo / nodejs
+        run: docker-compose -f docker-compose-nodejs-mongodb.yml down
+
+      - name: Set up Docker Environment - mysql - python
+        run: docker-compose -f docker-compose-python-mysql.yml up -d
+      # - name: Install Python Dependencies and run tests
+      #   run: |
+      #     cd python-server
+      #     pip install -r requirements.txt
+      #     pip install pytest-html
+      #     python -m pytest
+      #     pytest --html=report.html
+      # - name: Upload pytest HTML report
+      #   uses: actions/upload-artifact@v2
+      #   if: always()
+      #   with:
+      #     name: Pytest HTML Report
+      #     path: python-server/report.html
+      - name: Shutdown Docker Environment - mysql - python
+        run: docker-compose -f docker-compose-python-mysql.yml down
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          working-directory: my-app
+
+      - name: Build and docs
+        run: |
+          cd my-app
+          npm run jsdoc
+          npm run build --if-present

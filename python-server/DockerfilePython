@@ -1,0 +1,8 @@
+FROM python:3.9
+
+WORKDIR /python-server
+
+COPY . .
+RUN pip install flask flask-sqlalchemy flask-cors mysql-connector-python mysqlclient python-dotenv sqlalchemy
+
+CMD ["python", "main"]
